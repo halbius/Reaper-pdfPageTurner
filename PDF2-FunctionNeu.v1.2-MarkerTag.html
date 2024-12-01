@@ -1,0 +1,363 @@
+<!doctype html>
+<html>
+<head>
+
+  <title>PDF Pageturner</title>  
+  <meta charset="utf-8" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/>
+  <meta name="viewport" id="viewport-meta" content="" />
+  <meta id="viewport" name="viewport" content="width=device-width, initial-scale=1"/>
+  
+
+  <style>
+    #viewer {
+      border-style: none;
+      position: relative;
+      top: 0; bottom: 0;
+      left: 0; right: 0;
+      width: 100%; height: 1200px;
+    }
+
+
+    body {
+  background-color:#333333;
+  color:#A9ABAB;
+  font-family: 'Open Sans',sans-serif;
+  font-size: 23px;
+}
+
+.transportdiv {
+  max-width:458px;
+  margin-left:auto;
+  margin-right:auto;
+}
+
+
+
+.btab {
+  width:100%;
+}
+   
+table ,th, td {
+  border: 0px;
+  border-collapse: collapse;
+}   
+
+
+  .Graphic_x0020_Style_x0020_4{opacity:0.05;fill:url(#SVGID_1_);}
+	.abort_bg{fill:#262626;}
+	.abort-text{fill:#333333;}
+	.abort-on-text{fill:#5D3729;}
+	.loop-on{fill:#7DBBBB;}
+	.record_fill{fill:#5D3729;}
+	.black_border{fill:#1A1A1A;}
+	.record_gloss{opacity:0.15;fill:url(#SVGID_2_);}
+	.record_icon{opacity:0.5;fill:none;stroke:#FFFFFF;stroke-width:22;stroke-miterlimit:10;}
+	.shadow{fill:#262626;}
+	.dark_grad{fill:url(#SVGID_3_);}
+	.icon_grey{fill:#808080;}
+	.icon_white{fill:#FFF;}
+	.light_grad{fill:url(#SVGID_4_);}
+	.under_gloss{opacity:0.05;}
+	.over_gloss{opacity:0.05;fill:url(#SVGID_5_);}
+	.over_gloss_dark{opacity:0.05;fill:url(#SVGID_7_);}
+  .mouseover{opacity:0;fill:#FFFFFF; stroke:black; stroke-width:2;}
+
+  #button-stop:hover .mouseover {opacity:0.1; -webkit-transition: .2s; -moz-transition: .2s; transition: .2s;}
+  #button-play:hover .mouseover {opacity:0.2; -webkit-transition: .2s; -moz-transition: .2s; transition: .2s;}
+  #button-pause:hover .mouseover {opacity:0.1; -webkit-transition: .2s; -moz-transition: .2s; transition: .2s;}
+  #button-record:hover .mouseover {opacity:0.1; -webkit-transition: .2s; -moz-transition: .2s; transition: .2s;}
+  #button-abort:hover .abort-on-text{fill:#FF2200; -webkit-transition: .3s; -moz-transition: .3s; transition: .3s;}
+  #button-prev:hover .mouseover {opacity:0.1; -webkit-transition: .2s; -moz-transition: .2s; transition: .2s;}
+  #button-loop:hover .mouseover {opacity:0.1; -webkit-transition: .2s; -moz-transition: .2s; transition: .2s;}
+  #button-next:hover .mouseover {opacity:0.1; -webkit-transition: .2s; -moz-transition: .2s; transition: .2s;}
+
+  #button-stop:active #stop-shadow {fill:none;}
+  #button-play:active #play-shadow {fill:none;}
+  #button-pause:active #pause-shadow {fill:none;}
+  #button-record:active #record-shadow {fill:none;}
+  #button-prev:active #prev-shadow {fill:none;}
+  #button-loop:active #loop-shadow {fill:none;}
+  #button-next:active #next-shadow {fill:none;}
+
+
+  </style>  
+
+<script src="main.js"></script>
+<script type="text/javascript">
+
+
+var desiredPage;
+var playPosition;
+var last_transport_state = -1, last_time_str = "";
+let page;
+let pageOffset = 0;
+let markerTag = "#S";
+let projectPDF;
+
+function readMarkers(markerArray){
+
+markerArray.unshift(["MARKER", "Anfang", 0, 0, 0]); //Nullmarker für Seite 1 einfügen
+markerArray.push(["MARKER", "Ende", 9999, 10000, 0]) //Endmarker anhängen
+
+for (i=0; i < markerArray.length-1; i++){ 
+
+  var leftMarkerPosition = Math.round((markerArray[i][3]) * 1000000) / 1000000; //adjust markers timestamp to same format as reapers playposition
+  var rightMarkerPosition = Math.round((markerArray[i+1][3]) * 1000000) / 1000000;
+
+  if(leftMarkerPosition <= last_time_str && last_time_str <= rightMarkerPosition){  //check the current marker left from playhead
+
+    let currentMarkerName = markerArray[i][1];
+    //document.getElementById("marker").innerHTML = currentMarkerName;
+    currentMarkerID = markerArray[i][2];
+
+    let newPage = Number(currentMarkerID) + Number(pageOffset);
+    page = newPage.toString();
+
+    updateViewerURL();
+
+  }
+
+}
+
+}
+
+function setTextForObject(obj, text) { // thx cfillion
+  if (obj.lastChild) obj.lastChild.nodeValue = text;
+  else obj.appendChild(document.createTextNode(text));
+}
+
+function convertSecondsToHHMMSS(seconds) {
+  const pad = (num) => num.toString().padStart(2, '0');
+  const hours = pad(Math.floor(seconds / 3600));
+  const minutes = pad(Math.floor((seconds % 3600) / 60));
+  const sec = pad(Math.floor(seconds % 60));
+  return `${hours}:${minutes}:${sec}`;
+}
+
+
+function prompt_pageOffset() {
+
+    let getPageOffset = prompt("Enter Page Offset:",pageOffset);
+
+    if (getPageOffset != null) {
+    wwr_req("SET/PROJEXTSTATE/pagesWebRC/offset/" + encodeURIComponent(getPageOffset));
+    wwr_req("GET/PROJEXTSTATE/pagesWebRC/offset");
+    document.getElementById("pageOffset").innerHTML = pageOffset;
+
+}
+ 
+}  
+
+
+function prompt_markerTag() {
+
+let getMarkerTag = prompt("Enter Marker Tag:", markerTag);
+
+if (getMarkerTag != null) {
+wwr_req("SET/PROJEXTSTATE/pagesWebRC/markerTag/" + encodeURIComponent(getMarkerTag));
+wwr_req("GET/PROJEXTSTATE/pagesWebRC/markerTag");
+document.getElementById("markerTag").innerHTML = markerTag;
+
+}
+
+} 
+
+function wwr_onreply(results) {
+
+  var ar = results.split("\n");
+  var markerArray = [];
+  var arrayLengthForPagesNumbers = 0;
+
+  for (var i=0; i < ar.length ; i++) {
+        
+    var tok = ar[i].split("\t");    
+    if (tok.length > 0) 
+      switch (tok[0]) {
+                
+      case "TRANSPORT":
+        if (tok.length > 4) {
+        if (tok[1] != last_transport_state) {
+          last_transport_state=tok[1];
+          document.getElementById("play").style.color = (last_transport_state&1) ? "#0f0" : "#ddd";
+        }
+        var obj = document.getElementById("play");
+        if (obj) {
+          var tmp="";
+          switch (parseInt(last_transport_state)) {
+        
+          case 0: tmp += "Stop: "; break;
+          case 1: tmp += "Play: "; break;
+          case 2: tmp += "Pause: "; break;
+          case 5: tmp += "Record: "; break;
+          case 6: tmp += "recpaused: "; break;
+          }
+
+         last_time_str = tok[2];
+          const formattedTime = convertSecondsToHHMMSS(last_time_str);
+          tmp += (formattedTime);
+          setTextForObject(obj,tmp);
+        }
+                  
+        }
+  
+      break;
+
+      case "MARKER":
+        if(tok.length > 4){
+
+          const pageCheck = tok[1].includes(markerTag);  //check if marker name contains "#S" to identify page markers
+
+          if (pageCheck == true){  // if marker is a page marker push into array
+         
+            let putIntoArray = tok; 
+            let getPageNumber = putIntoArray[1].substring(2);
+            putIntoArray[2] = getPageNumber;
+            markerArray.push(putIntoArray);
+
+          }
+
+        }
+      break;
+
+      case "PROJEXTSTATE":
+                    
+      let param = tok[2];
+
+      if (param == "offset"){
+
+        if (tok[3] == "NaN"){
+        
+          pageOffset = 0;
+        }
+
+        else {
+          pageOffset = Number(tok[3]);
+        } 
+
+      }
+
+      if (param == "markerTag"){
+
+        if (tok[3] == ""){
+          markerTag = "#S";
+        }
+        else {
+          markerTag = tok[3];
+        }
+                       
+       }
+
+       if (param == "PDF"){
+        if (tok[3] != null){
+
+          projectPDF = tok[3];
+
+        }
+                       
+       }
+
+      break;
+
+    }    
+    }         
+    
+
+ readMarkers(markerArray);
+ document.getElementById("pageOffset").innerHTML = pageOffset;
+ document.getElementById("markerTag").innerHTML = markerTag;
+ loadPDFfromProject();
+
+}
+
+wwr_start();
+wwr_req_recur("TRANSPORT;MARKER",100);    
+wwr_req("GET/PROJEXTSTATE/pagesWebRC/offset;GET/PROJEXTSTATE/pagesWebRC/markerTag;GET/PROJEXTSTATE/pagesWebRC/PDF");
+
+
+  window.onload = function() {
+  document.getElementByID("pageOffset").innerHTML = pageOffset;
+  document.getElementByID("markerTag").innerHTML = markerTag;
+};
+
+</script>
+
+</head>
+
+<body>
+
+<div class="transportdiv">
+  <g>Playtime: </g>
+  <g id="play"></g>
+</div>
+
+<div class="transportdiv">
+  <g>Page-Offset: </g>
+  <g id="pageOffset" style="color:#11ffff" onclick="prompt_pageOffset()">PageOffset</g>
+</div> 
+
+<div class="transportdiv">
+  <g>Marker-Tag:</g>
+  <g id="markerTag" style="color:#ff8000" onclick="prompt_markerTag()">markerTag</g>
+</div> 
+
+<div class="transportdiv">
+  <g>Select File:</g>
+  <g><input id="inputPDF" onchange="getPDF()" type="file" accept="pdf"></g>
+</div> 
+
+
+    <iframe id="viewer"></iframe>
+    <script>
+
+    page = 1;
+    let reader = new FileReader();
+
+    function updateViewerURL() {
+      let viewer = document.getElementById('viewer');
+      viewer.src = reader.result + '#page=' + page;
+    }
+
+    reader.addEventListener('load', updateViewerURL);
+
+
+function getPDF(){
+
+  let inputPDF = document.getElementById("inputPDF").files[0].name;
+
+  wwr_req("SET/PROJEXTSTATE/pagesWebRC/PDF/" + encodeURIComponent(inputPDF));
+  wwr_req("GET/PROJEXTSTATE/pagesWebRC/PDF");
+  document.getElementById("markerTag").innerHTML = markerTag;
+
+  fetch(inputPDF)
+  .then(response => response.blob())
+  .then(blob => {
+  reader.readAsDataURL(blob.slice(0, blob.size, 'application/pdf'));
+  });
+
+}
+
+
+function loadPDFfromProject(){
+  
+  fetch(projectPDF)
+  .then(response => response.blob())
+  .then(blob => {
+  reader.readAsDataURL(blob.slice(0, blob.size, 'application/pdf'));
+  });
+
+  
+
+}
+
+    </script>
+
+
+
+    
+
+</body>
+
+</html>
