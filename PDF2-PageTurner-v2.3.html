@@ -21,7 +21,9 @@
       --panel:      #22252a;
       --border:     #2e3238;
       --accent:     #00e5a0;
-      --accent2:    #ff6b35;
+      --accent2:    #ff3535;
+      --accent3:    #ffe435;
+      --accent4:    #35fff8;
       --muted:      #5a6070;
       --text:       #c8ccd4;
       --text-dim:   #7a8090;
@@ -298,7 +300,7 @@
       min-width: 260px;
       display: none;
     }
-    #debug-panel.visible { display: block; }
+    #debug-panel.visible { display: block; } 
     #debug-panel .db-row { margin: 2px 0; }
     #debug-panel .db-label { color: var(--muted); }
     #debug-panel .db-val   { color: #fff; }
@@ -315,6 +317,7 @@
       border-radius: 4px;
       cursor: pointer;
       z-index: 200;
+      display: none; /* none: Debug-toggle ausgeblendet, block: Debug-toggle sichtbar */   
     }
   </style>
 
@@ -405,6 +408,7 @@
           if (tok[2] === "offset")     { pageOffset = (tok[3] === "NaN" || tok[3] == null) ? 0 : Number(tok[3]); }
           if (tok[2] === "markerTag")  { markerTag  = tok[3] || "#S"; }
           if (tok[2] === "docName") onDocName(tok[3] || "");
+          if (tok[2] === "itemFilter") { let v = tok[3] || ""; if (/%[0-9A-Fa-f]{2}/.test(v)) { try { v = decodeURIComponent(v); } catch (e) {} } setItemFilter(v === "~" ? "" : v); }
           if (tok[2] === "PDF" && docList.length === 0) { handleProjectPDF(tok[3]); }
           updateParamDisplay();
           break;
@@ -938,15 +942,18 @@
 
   function prompt_itemTag() {} // nicht mehr benötigt
 
+  function setItemFilter(v) {
+    itemFilter = (v || "").trim();
+    itemFilterList = itemFilter ? itemFilter.split(',').map(x => x.trim()).filter(x => x.length > 0) : [];
+    document.getElementById('itemFilterVal').textContent = itemFilter || "–";
+    lastSearchTerm = "";   // Suche neu auslösen
+  }
+
   function prompt_itemFilter() {
     const v = prompt("Item-Filter eingeben – mehrere Begriffe komma-getrennt:\nz.B. OTon, Atmo\nLeer lassen = kein Filter", itemFilter);
     if (v !== null) {
-      itemFilter = v.trim();
-      itemFilterList = itemFilter
-        ? itemFilter.split(',').map(s => s.trim()).filter(s => s.length > 0)
-        : [];
-      document.getElementById('itemFilterVal').textContent = itemFilter || "–";
-      lastSearchTerm = ""; // Suche neu auslösen
+      setItemFilter(v);
+      wwr_req("SET/PROJEXTSTATE/pagesWebRC/itemFilter/" + encodeURIComponent(itemFilter || "~"));   // mit dem Projekt speichern ("~" = kein Filter)
     }
   }
 
@@ -1115,6 +1122,7 @@
     if (listing) return;
     if (dir === projectDir && !(helperFailed && Date.now() > helperRetry)) return;   // bei Fehlschlag alle 5 s neu versuchen
     listing = true; projectDir = dir;
+    wwr_req("GET/PROJEXTSTATE/pagesWebRC/offset;GET/PROJEXTSTATE/pagesWebRC/markerTag;GET/PROJEXTSTATE/pagesWebRC/docName;GET/PROJEXTSTATE/pagesWebRC/itemFilter");
     dbSet("projectDir", dir || "(leer)");
     const grp = document.getElementById('doc-group');
     const ac = new AbortController(), to = setTimeout(() => ac.abort(), 4000);
@@ -1379,7 +1387,7 @@
 
   wwr_start();
   wwr_req_recur("TRANSPORT;MARKER", 150);
-  wwr_req("GET/PROJEXTSTATE/pagesWebRC/offset;GET/PROJEXTSTATE/pagesWebRC/markerTag;GET/PROJEXTSTATE/pagesWebRC/PDF;GET/PROJEXTSTATE/pagesWebRC/docName");
+  wwr_req("GET/PROJEXTSTATE/pagesWebRC/offset;GET/PROJEXTSTATE/pagesWebRC/markerTag;GET/PROJEXTSTATE/pagesWebRC/PDF;GET/PROJEXTSTATE/pagesWebRC/docName;GET/PROJEXTSTATE/pagesWebRC/itemFilter");
   wwr_req_recur("GET/EXTSTATE/pagesWebRC/activeItem;GET/EXTSTATE/pagesWebRC/activeItemStart;GET/EXTSTATE/pagesWebRC/itemLookup;GET/EXTSTATE/pagesWebRC/projectDir", 150);
   </script>
 </head>
@@ -1434,17 +1442,17 @@
     <!-- Params -->
     <div class="param-field">
       <label>Seiten-Tag:</label>
-      <span class="val" id="markerTagVal" onclick="prompt_markerTag()">#S</span>
-    </div>
-
-    <div class="param-field">
-      <label>Item-Filter:</label>
-      <span class="val" id="itemFilterVal" onclick="prompt_itemFilter()" style="color:var(--accent2)">–</span>
+      <span class="val" id="markerTagVal" onclick="prompt_markerTag()" style="color:var(--accent3)">#S</span>
     </div>
 
     <div class="param-field">
       <label>Offset:</label>
       <span class="val" id="pageOffsetVal" onclick="prompt_pageOffset()">0</span>
+    </div>
+
+    <div class="param-field">
+      <label>Item-Filter:</label>
+      <span class="val" id="itemFilterVal" onclick="prompt_itemFilter()" style="color:var(--accent4)">–</span>
     </div>
 
     <div class="separator"></div>
