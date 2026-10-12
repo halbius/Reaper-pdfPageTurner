@@ -1,0 +1,1503 @@
+<!doctype html>
+<html>
+<head>
+  <title>PDF PageTurner v2</title>
+  <meta charset="utf-8" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;600&display=swap" rel="stylesheet">
+
+  <!-- PDF.js from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+
+  <style>
+    :root {
+      --bg:         #1a1c1e;
+      --panel:      #22252a;
+      --border:     #2e3238;
+      --accent:     #00e5a0;
+      --accent2:    #ff6b35;
+      --muted:      #5a6070;
+      --text:       #c8ccd4;
+      --text-dim:   #7a8090;
+      --highlight:  rgba(0, 229, 160, 0.35);
+      --canvas-bg:  #111214;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Barlow', sans-serif;
+      font-weight: 300;
+      font-size: 14px;
+      height: 100vh;
+      height: 100dvh;   /* sichtbare Höhe auf Handy/Tablet (Firefox: 100vh ist größer als der sichtbare Bereich) */
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── TOP BAR ─────────────────────────────────────────── */
+    #topbar {
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+
+    #topbar .logo {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 13px;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      white-space: nowrap;
+    }
+
+    .separator {
+      width: 1px;
+      height: 28px;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+
+    /* transport */
+    #transport-display {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 13px;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+    #transport-display .state          { color: var(--accent2); transition: color .2s; }
+    #transport-display .state.playing  { color: #00e57a; text-shadow: 0 0 8px rgba(0,229,122,.5); }
+    #transport-display .state.paused   { color: #ffaa00; }
+    #transport-display .state.rec      { color: #ff3333; }
+    #transport-display .time           { color: var(--text); margin-left: 6px; }
+
+    /* mode toggles */
+    .mode-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .mode-label { color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+
+    .toggle-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 10px;
+      cursor: pointer;
+      user-select: none;
+      transition: border-color .2s;
+    }
+    .toggle-pill:hover { border-color: var(--muted); }
+    .toggle-pill input[type="checkbox"] { display: none; }
+    .toggle-pill .pill-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--border);
+      transition: background .2s;
+      flex-shrink: 0;
+    }
+    .toggle-pill.active .pill-dot { background: var(--accent); }
+    .toggle-pill.active { border-color: var(--accent); }
+    .toggle-pill .pill-text { font-size: 12px; font-weight: 400; }
+
+    /* editable params */
+    .param-field {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .param-field label { color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em; }
+    .param-field .val {
+      font-family: 'Share Tech Mono', monospace;
+      color: var(--accent);
+      cursor: pointer;
+      border-bottom: 1px dashed var(--muted);
+      padding: 0 2px;
+      min-width: 28px;
+    }
+    .param-field .val:hover { color: #fff; }
+
+    /* file input */
+    #inputPDF {
+      font-size: 11px;
+      color: var(--text-dim);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+    #inputPDF::-webkit-file-upload-button {
+      background: var(--border);
+      border: none;
+      color: var(--text);
+      padding: 3px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    /* status strip */
+    #statusbar {
+      background: #161819;
+      border-bottom: 1px solid var(--border);
+      padding: 4px 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 11px;
+      color: var(--text-dim);
+      flex-shrink: 0;
+      font-family: 'Share Tech Mono', monospace;
+      flex-wrap: wrap;
+    }
+    #statusbar .badge {
+      padding: 1px 8px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+    .badge-marker   { background: rgba(0,229,160,.15); color: var(--accent); }
+    .badge-item     { background: rgba(255,107,53,.15); color: var(--accent2); }
+    .badge-inactive { background: rgba(90,96,112,.1);  color: var(--muted); }
+    #status-msg     { color: var(--text); }
+    #match-count    { color: var(--accent2); }
+
+    /* ── PDF VIEWER ───────────────────────────────────────── */
+    #viewer-wrap {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      background: var(--canvas-bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 0;
+      gap: 12px;
+      position: relative;
+    }
+
+    .pdf-page-wrap {
+      position: relative;
+      box-shadow: 0 4px 32px rgba(0,0,0,.6);
+    }
+
+    .pdf-page-wrap canvas { display: block; }
+
+    /* text layer for search highlights */
+    .textLayer {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      line-height: 1;
+    }
+    .textLayer span {
+      color: transparent;
+      position: absolute;
+      white-space: pre;
+      transform-origin: 0% 0%;
+      pointer-events: none;
+    }
+    /* Wenn click-modus aktiv: Spans klickbar machen */
+    body.click-mode .textLayer span {
+      pointer-events: all;
+      cursor: crosshair;
+    }
+    /* Highlights werden als Overlay-Divs gezeichnet, nicht auf Spans */
+    .highlight-overlay {
+      position: absolute;
+      pointer-events: none;
+      border-radius: 3px;
+      background: rgba(255, 107, 53, 0.35);   /* orange = weitere Treffer */
+      outline: 1px solid rgba(255, 107, 53, 0.6);
+    }
+    .highlight-overlay.current {
+      background: rgba(0, 229, 160, 0.75);    /* grün = aktiver Treffer */
+      outline: 1px solid var(--accent);
+    }
+
+    /* page number label */
+    .page-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      text-align: center;
+      letter-spacing: .08em;
+    }
+
+    /* scroll-to indicator */
+    #scroll-indicator {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--accent);
+      color: #000;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      padding: 6px 12px;
+      border-radius: 4px;
+      opacity: 0;
+      transition: opacity .4s;
+      pointer-events: none;
+      z-index: 100;
+    }
+    #scroll-indicator.show { opacity: 1; }
+
+    /* Handy-Layout: Werkzeugleiste als scrollbare Leiste am unteren Rand */
+    .mode-group { flex-wrap: wrap; }
+    .toggle-pill { white-space: nowrap; }
+    #doc-select { max-width: 220px; }
+    @media (max-width: 900px) {
+      #topbar { gap: 8px; padding: 6px 10px; }
+      #doc-group { position: fixed; left: 0; right: 0; bottom: 0; z-index: 150; background: var(--panel); border-top: 1px solid var(--border);
+                   padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); flex-wrap: nowrap; overflow-x: auto; }
+      #doc-group > * { flex-shrink: 0; }
+      #doc-group .mode-label { display: none; }
+      #doc-select { max-width: 150px; }
+      #viewer-wrap { padding-bottom: 76px; }
+      #scroll-indicator, #debug-toggle { bottom: 84px; }
+      #debug-panel { bottom: 124px; }
+    }
+    /* Anmerkungen */
+    .ann-layer { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; z-index:5; }
+    body.tool-active .ann-layer { pointer-events:all; touch-action:none; cursor:crosshair; }
+    /* debug panel */
+    #debug-panel {
+      position: fixed;
+      bottom: 60px;
+      right: 20px;
+      background: #0a0c0e;
+      border: 1px solid #ff6b35;
+      border-radius: 4px;
+      padding: 8px 12px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      color: #ff6b35;
+      z-index: 200;
+      min-width: 260px;
+      display: none;
+    }
+    #debug-panel.visible { display: block; }
+    #debug-panel .db-row { margin: 2px 0; }
+    #debug-panel .db-label { color: var(--muted); }
+    #debug-panel .db-val   { color: #fff; }
+    #debug-toggle {
+      position: fixed;
+      bottom: 20px;
+      right: 160px;
+      background: #1a1c1e;
+      border: 1px solid #ff6b35;
+      color: #ff6b35;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      z-index: 200;
+    }
+  </style>
+
+  <!-- Reaper web remote script -->
+  <script src="main.js"></script>
+
+  <script>
+  // ═══════════════════════════════════════════════════════════
+  // STATE
+  // ═══════════════════════════════════════════════════════════
+  let pageOffset   = 0;
+  let markerTag    = "#S";
+  let projectPDF   = "";
+
+  let last_transport_state = -1;
+  let last_time_str        = 0;
+
+  // mode flags
+  let modeMarker = true;   // follow markers → page jump
+  let modeItem   = false;  // follow items   → text search
+
+  // PDF.js state
+  let pdfDoc       = null;
+  let pdfUrl       = null;
+  let renderedPages = {};
+  let totalPages   = 0;
+  let currentPage  = 1;
+  let searchMatches = [];
+  let currentMatchIndex = 0;
+  let zoomFactor   = 1.0;   // Zoom-Multiplikator, 1.0 = Standardgröße
+
+  // item state – kommt direkt aus ExtState via ReaScript
+  let activeItemName  = "";
+  let activeItemStart = 0;     // Startzeit des aktiven Items (vom Lua-Script)
+  let markerIsActive  = false;
+  let itemFilter      = "";
+  let itemFilterList  = [];
+  let syncActive      = true;
+  let clickMode       = false;
+  let itemLookup      = {};
+
+  // debounce for item search
+  let searchDebounceTimer = null;
+  let lastSearchTerm = "";
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  // ═══════════════════════════════════════════════════════════
+  // REAPER POLLING
+  // ═══════════════════════════════════════════════════════════
+  function wwr_onreply(results) {
+    if (!syncActive) return; // Sync pausiert → alles ignorieren
+
+    const ar = results.split("\n");
+    const markerArray = [];
+    markerIsActive = false;
+
+    for (let i = 0; i < ar.length; i++) {
+      const tok = ar[i].split("\t");
+      if (tok.length === 0) continue;
+
+      switch (tok[0]) {
+
+        case "TRANSPORT":
+          if (tok.length > 4) {
+            last_transport_state = parseInt(tok[1]);
+            last_time_str = parseFloat(tok[2]);
+            updateTransportDisplay();
+          }
+          break;
+
+        case "MARKER":
+          if (tok.length > 3) {
+            const name = tok[1];
+            dbSet("letzter Marker-Name (roh)", `"${name}"`);
+            dbSet("markerTag (aktuell)", `"${markerTag}"`);
+            dbSet("startsWith-Check", `"${name}".startsWith("${markerTag}") = ${name.startsWith(markerTag)}`);
+            if (name.startsWith(markerTag)) {
+              const entry = [...tok];
+              entry[2] = name.substring(markerTag.length).trim();
+              markerArray.push(entry);
+            }
+          }
+          break;
+
+        case "PROJEXTSTATE":
+          if (tok[2] === "offset")     { pageOffset = (tok[3] === "NaN" || tok[3] == null) ? 0 : Number(tok[3]); }
+          if (tok[2] === "markerTag")  { markerTag  = tok[3] || "#S"; }
+          if (tok[2] === "docName") onDocName(tok[3] || "");
+          if (tok[2] === "PDF" && docList.length === 0) { handleProjectPDF(tok[3]); }
+          updateParamDisplay();
+          break;
+
+        case "EXTSTATE":
+          if (tok[1] === "pagesWebRC" && tok[2] === "activeItem") {
+            activeItemName = tok[3] || "";
+            dbSet("ExtState activeItem empfangen", `"${activeItemName}"`);
+          }
+          if (tok[1] === "pagesWebRC" && tok[2] === "projectDir") onProjectDir(tok[3] || "");
+          if (tok[1] === "pagesWebRC" && tok[2] === "activeItemStart") {
+            activeItemStart = parseFloat(tok[3]) || 0;
+            dbSet("activeItemStart", activeItemStart);
+          }
+          if (tok[1] === "pagesWebRC" && tok[2] === "itemLookup") {
+            try {
+              // Format: [{name, start}, ...] – Array mit allen Items inkl. Duplikate
+              const arr = JSON.parse(tok[3] || "[]");
+              itemLookup = arr; // Array behalten
+            } catch(e) { itemLookup = []; }
+          }
+          break;
+      }
+    }
+
+    // Seite hat Vorrang beim SPRINGEN – Marker steuert die Seite
+    if (modeMarker) processMarkers(markerArray);
+
+    // Item-Highlights laufen IMMER wenn Item-Modus aktiv –
+    // auch wenn Marker aktiv ist (nur der Seitensprung wird dann blockiert)
+    if (modeItem) processItems();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // MARKER MODE
+  // ═══════════════════════════════════════════════════════════
+  function processMarkers(markerArray) {
+    if (markerArray.length === 0) return;
+
+    const arr = [
+      ["MARKER", "Anfang", 0,    0,     0],
+      ...markerArray,
+      ["MARKER", "Ende",   9999, 10000, 0]
+    ];
+
+    for (let i = 0; i < arr.length - 1; i++) {
+      const left  = parseFloat(arr[i][3]);
+      const right = parseFloat(arr[i+1][3]);
+
+      if (left <= last_time_str && last_time_str <= right) {
+        const targetPage = Number(arr[i][2]) + pageOffset;
+        if (targetPage > 0) {
+          markerIsActive = true;  // Seite ist aktiv → Item wird ignoriert
+          if (targetPage !== currentPage) {
+            goToPage(targetPage, `Marker → Seite ${targetPage}`);
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // ITEM MODE
+  // ═══════════════════════════════════════════════════════════
+  function processItems() {
+    let term = activeItemName ? activeItemName.trim() : "";
+
+    // Mehrere Filter (komma-getrennt): Item muss mindestens einen enthalten
+    if (term && itemFilterList.length > 0) {
+      const termLower = term.toLowerCase();
+      const passes = itemFilterList.some(f => termLower.includes(f.toLowerCase()));
+      if (!passes) {
+        term = "";
+        dbSet("Item gefiltert", `„${activeItemName}" passt keinem Filter`);
+      }
+    }
+
+    dbSet("modeItem aktiv", "ja");
+    dbSet("markerIsActive", markerIsActive ? "ja" : "nein");
+    dbSet("activeItemName (ExtState)", activeItemName || "(leer)");
+    dbSet("itemFilter", itemFilter || "(kein Filter)");
+    dbSet("lastSearchTerm", lastSearchTerm || "(leer)");
+
+    if (term && term !== lastSearchTerm) {
+      lastSearchTerm = term;
+      clearSearchDebounce();
+
+      // Welches Vorkommen dieses Namens ist das aktive?
+      // Alle Items mit gleichem Namen nach Startzeit sortieren,
+      // dann Index des aktuell aktiven ermitteln
+      const matchIndex = getItemOccurrenceIndex(term);
+      dbSet("Vorkommen-Index", matchIndex);
+
+      searchDebounceTimer = setTimeout(() => searchInPDF(term, matchIndex), 200);
+      setStatus(`Item: „${term}" (Vorkommen ${matchIndex + 1})`, "item");
+    } else if (!term && lastSearchTerm !== "") {
+      lastSearchTerm = "";
+      clearAllHighlights();
+      setStatus(itemFilterList.length > 0 ? `Kein passendes Item (Filter: ${itemFilter})` : "Kein aktives Item", "idle");
+    }
+  }
+
+  // Ermittelt den Index des aktiven Items unter allen gleichnamigen Items im Lookup.
+  // itemLookup ist jetzt ein Array: [{name, start}, ...] – sortiert nach Startzeit.
+  // Das aktive Item hat die Startzeit activeItemStart (direkt vom Lua-Script).
+  function getItemOccurrenceIndex(term) {
+    const termLower = term.toLowerCase();
+
+    // Alle Einträge mit gleichem Namen aus Array, nach Startzeit sortiert
+    const sameNameItems = itemLookup
+      .filter(e => e.name.toLowerCase() === termLower)
+      .sort((a, b) => a.start - b.start);
+
+    if (sameNameItems.length === 0) return 0;
+
+    // Nächsten Treffer zu activeItemStart finden
+    let bestIndex = 0;
+    let bestDiff  = Infinity;
+    for (let i = 0; i < sameNameItems.length; i++) {
+      const diff = Math.abs(sameNameItems[i].start - activeItemStart);
+      if (diff < bestDiff) {
+        bestDiff  = diff;
+        bestIndex = i;
+      }
+    }
+
+    dbSet("activeItemStart", activeItemStart.toFixed(3));
+    dbSet("sameNameItems", sameNameItems.map(x => x.start.toFixed(1)).join(', '));
+    dbSet("→ gewählter Index", bestIndex);
+
+    return bestIndex;
+  }
+
+  function clearSearchDebounce() {
+    if (searchDebounceTimer) { clearTimeout(searchDebounceTimer); searchDebounceTimer = null; }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // PDF.js – LOAD
+  // ═══════════════════════════════════════════════════════════
+  async function loadPDF(url) {
+    if (!url) return;
+    if (url === pdfUrl) return; // ← verhindert unnötiges Neu-Laden!
+
+    pdfUrl = url;
+    renderedPages = {};
+    searchMatches = [];
+    currentPage = 1;
+
+    setStatus("PDF wird geladen…", "idle");
+
+    try {
+      pdfDoc = await pdfjsLib.getDocument(url).promise;
+      totalPages = pdfDoc.numPages;
+      setStatus(`PDF geladen – ${totalPages} Seiten`, "idle");
+      await renderAllPages();
+    } catch (e) {
+      setStatus("PDF-Ladefehler: " + e.message, "idle");
+      console.error(e);
+    }
+  }
+
+  async function renderAllPages() {
+    const container = document.getElementById('viewer-wrap');
+    container.innerHTML = ''; // alten Inhalt entfernen
+
+    for (let p = 1; p <= totalPages; p++) {
+      const page = await pdfDoc.getPage(p);
+      const scale = calcScale(page);
+      const viewport = page.getViewport({ scale });
+
+      // wrapper
+      const wrap = document.createElement('div');
+      wrap.className = 'pdf-page-wrap';
+      wrap.id = `page-wrap-${p}`;
+      wrap.style.width  = viewport.width + 'px';
+      wrap.style.height = viewport.height + 'px';
+
+      // canvas
+      const canvas = document.createElement('canvas');
+      canvas.width  = viewport.width;
+      canvas.height = viewport.height;
+
+      // text layer div
+      const textLayerDiv = document.createElement('div');
+      textLayerDiv.className = 'textLayer';
+      textLayerDiv.id = `text-layer-${p}`;
+      textLayerDiv.style.width  = viewport.width + 'px';
+      textLayerDiv.style.height = viewport.height + 'px';
+
+      wrap.appendChild(canvas);
+      wrap.appendChild(textLayerDiv);
+
+      // page label
+      const label = document.createElement('div');
+      label.className = 'page-label';
+      label.textContent = `— ${p} / ${totalPages} —`;
+
+      container.appendChild(wrap);
+      container.appendChild(label);
+
+      // render canvas
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+      // build text layer
+      const textContent = await page.getTextContent();
+      renderedPages[p] = { viewport, textContent };
+      buildTextLayer(p, textLayerDiv, textContent, viewport);
+      drawAnnotations(p);
+    }
+  }
+
+  function calcScale(page) {
+    const viewport = page.getViewport({ scale: 1 });
+    const availW = window.innerWidth - 40;
+    const baseScale = Math.min(availW / viewport.width, 1.8);
+    return baseScale * zoomFactor;
+  }
+
+  function buildTextLayer(pageNum, div, textContent, viewport) {
+    div.innerHTML = '';
+    for (const item of textContent.items) {
+      const span = document.createElement('span');
+      span.textContent = item.str;
+
+      const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+      const angle = Math.atan2(tx[1], tx[0]);
+      const scaleX = Math.sqrt(tx[0]*tx[0] + tx[1]*tx[1]);
+      const scaleY = Math.sqrt(tx[2]*tx[2] + tx[3]*tx[3]);
+      const fontH = Math.sqrt(tx[2]*tx[2] + tx[3]*tx[3]);
+
+      span.style.left      = tx[4] + 'px';
+      span.style.top       = (tx[5] - fontH) + 'px';
+      span.style.fontSize  = fontH + 'px';
+      span.style.transform = angle ? `rotate(${angle}rad)` : '';
+      span.style.scaleX    = scaleX / fontH;
+      div.appendChild(span);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // SEARCH & HIGHLIGHT
+  // Zeichnet einen einzigen Overlay-Div pro Treffergruppe –
+  // kein Span-Splitting, kein überlappender Rand
+  // ═══════════════════════════════════════════════════════════
+  async function searchInPDF(term, occurrenceIndex = 0) {
+    clearAllHighlights();
+    if (!pdfDoc || !term) return;
+
+    const termLower = term.toLowerCase().trim();
+    searchMatches   = [];
+    currentMatchIndex = 0;
+
+    dbSet("Suche nach", `"${termLower}" (Vorkommen ${occurrenceIndex + 1})`);
+
+    for (let p = 1; p <= totalPages; p++) {
+      const data = renderedPages[p];
+      if (!data) continue;
+
+      const { textContent } = data;
+      const textLayerDiv = document.getElementById(`text-layer-${p}`);
+      const pageWrap     = document.getElementById(`page-wrap-${p}`);
+      if (!textLayerDiv || !pageWrap) continue;
+
+      const spans = Array.from(textLayerDiv.querySelectorAll('span'));
+      const lines = buildLines(textContent.items, spans);
+      const pageGroups = [];
+
+      for (const line of lines) {
+        const lineText = line.map(s => s.text).join('').toLowerCase();
+        if (!lineText.includes(termLower)) continue;
+
+        const matchSpans = findMatchingSpans(line, termLower);
+        if (matchSpans.length === 0) continue;
+
+        const box = getGroupBoundingBox(matchSpans, pageWrap);
+        if (!box) continue;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'highlight-overlay';
+        overlay.style.left   = box.left   + 'px';
+        overlay.style.top    = box.top    + 'px';
+        overlay.style.width  = box.width  + 'px';
+        overlay.style.height = box.height + 'px';
+        pageWrap.appendChild(overlay);
+
+        pageGroups.push({ spans: matchSpans, overlay });
+      }
+
+      if (pageGroups.length > 0) {
+        searchMatches.push({ pageNum: p, groups: pageGroups });
+      }
+    }
+
+    // Alle Treffer flach als Liste
+    const allGroups = searchMatches.flatMap(m => m.groups);
+    const total = allGroups.length;
+    document.getElementById('match-count').textContent =
+      total > 0 ? `${total} Treffer` : 'kein Treffer';
+    dbSet("Treffer gesamt", total);
+
+    if (total > 0) {
+      // n-ten Treffer (occurrenceIndex) als aktiven markieren, Rest als weitere
+      const targetIndex  = Math.min(occurrenceIndex, total - 1);
+      const targetGroup  = allGroups[targetIndex];
+      targetGroup.overlay.classList.add('current');
+
+      scrollToOverlay(targetGroup.overlay, `Item → „${term}" (${targetIndex + 1}/${total})`);
+    } else {
+      setStatus(`„${term}" nicht gefunden`, "item");
+    }
+  }
+
+  // Berechnet die umschließende Box aller Spans relativ zum page-wrap
+  function getGroupBoundingBox(spans, pageWrap) {
+    const wrapRect = pageWrap.getBoundingClientRect();
+    let minLeft = Infinity, minTop = Infinity, maxRight = -Infinity, maxBottom = -Infinity;
+
+    for (const span of spans) {
+      const r = span.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      minLeft   = Math.min(minLeft,   r.left   - wrapRect.left);
+      minTop    = Math.min(minTop,    r.top    - wrapRect.top);
+      maxRight  = Math.max(maxRight,  r.right  - wrapRect.left);
+      maxBottom = Math.max(maxBottom, r.bottom - wrapRect.top);
+    }
+    if (minLeft === Infinity) return null;
+    return { left: minLeft - 1, top: minTop - 1, width: maxRight - minLeft + 2, height: maxBottom - minTop + 2 };
+  }
+
+  // Gibt nur die Spans zurück die den Suchbegriff in der Zeile abdecken.
+  // Funktioniert auch wenn der Begriff über mehrere Spans verteilt ist
+  // (z.B. "OTon" + "-" + "10" als drei separate PDF-Elemente).
+  function findMatchingSpans(line, termLower) {
+    // Kumulativen Zeilentext mit Positions-Map aufbauen
+    let cumText = "";
+    const segMap = []; // { start, end, span }
+
+    for (const seg of line) {
+      const start = cumText.length;
+      cumText += seg.text.toLowerCase();
+      segMap.push({ start, end: cumText.length, span: seg.span });
+    }
+
+    const result = [];
+    let pos = 0;
+    while (pos < cumText.length) {
+      const idx = cumText.indexOf(termLower, pos);
+      if (idx === -1) break;
+      const termEnd = idx + termLower.length;
+
+      // Alle Spans die [idx, termEnd) überlappen
+      for (const seg of segMap) {
+        if (seg.span && seg.end > idx && seg.start < termEnd) {
+          if (!result.includes(seg.span)) result.push(seg.span);
+        }
+      }
+      pos = idx + 1;
+    }
+    return result;
+  }
+
+  // Gruppiert textContent-Items nach Y-Koordinate zu Zeilen
+  // Gibt [{text, span}] pro Zeile zurück
+  function buildLines(items, spans) {
+    const YTOL = 3; // px Toleranz für "gleiche Zeile"
+    const lines = []; // Array von Arrays
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.str || item.str.trim() === '') continue;
+
+      const span = spans[i] || null;
+      const y    = item.transform ? Math.round(item.transform[5]) : 0;
+
+      // Suche passende Zeile
+      let found = false;
+      for (const line of lines) {
+        if (Math.abs(line.y - y) <= YTOL) {
+          line.segs.push({ text: item.str, span });
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        lines.push({ y, segs: [{ text: item.str, span }] });
+      }
+    }
+
+    // Zeilen von oben nach unten sortieren, Segs von links nach rechts
+    lines.sort((a, b) => b.y - a.y);
+    return lines.map(l => l.segs);
+  }
+
+  async function setZoom(val) {
+    zoomFactor = parseFloat(val);
+    document.getElementById('zoom-label').textContent = Math.round(zoomFactor * 100) + '%';
+    if (!pdfDoc) return;
+    const savedPage = currentPage;
+    await renderAllPages();
+    if (lastSearchTerm) {
+      await searchInPDF(lastSearchTerm);
+    } else {
+      scrollToPage(savedPage, null);
+    }
+  }
+
+  function clearAllHighlights() {
+    document.querySelectorAll('.highlight-overlay').forEach(el => el.remove());
+    document.getElementById('match-count').textContent = '';
+    searchMatches = [];
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // NAVIGATION
+  // ═══════════════════════════════════════════════════════════
+  function goToPage(num, reason) {
+    const clamped = Math.max(1, Math.min(totalPages || 9999, num));
+    if (clamped === currentPage && reason) return;
+    currentPage = clamped;
+    scrollToPage(clamped, reason);
+  }
+
+  function scrollToPage(pageNum, reason) {
+    const wrap = document.getElementById(`page-wrap-${pageNum}`);
+    if (!wrap) return;
+    document.getElementById('viewer-wrap').scrollTo({ top: wrap.offsetTop, behavior: 'auto' });   // nur den Viewer scrollen, nie die ganze Seite
+    showScrollIndicator(reason || `Seite ${pageNum}`);
+    if (reason) setStatus(reason, "marker");
+  }
+
+  // Scrollt zum Overlay nur wenn er nicht bereits im sichtbaren Bereich liegt
+  function scrollToOverlay(overlay, reason) {
+    if (!overlay) return;
+    const viewerWrap = document.getElementById('viewer-wrap');
+    const rect       = overlay.getBoundingClientRect();
+    const wrapRect   = viewerWrap.getBoundingClientRect();
+
+    const isVisible = rect.top >= wrapRect.top && rect.bottom <= wrapRect.bottom;
+
+    if (!isVisible) {
+      const scrollTarget = viewerWrap.scrollTop + (rect.top - wrapRect.top) - 20;
+      viewerWrap.scrollTo({ top: scrollTarget, behavior: 'auto' });
+      showScrollIndicator(reason || "Item gefunden");
+    }
+    setStatus(reason || "Item gefunden", "item");
+  }
+
+  // scrollToSpan bleibt als Fallback
+  function scrollToSpan(span, reason) {
+    if (!span) return;
+    const viewerWrap = document.getElementById('viewer-wrap');
+    const spanRect   = span.getBoundingClientRect();
+    const wrapRect   = viewerWrap.getBoundingClientRect();
+    const scrollTarget = viewerWrap.scrollTop + (spanRect.top - wrapRect.top) - 20;
+    viewerWrap.scrollTo({ top: scrollTarget, behavior: 'auto' });
+    showScrollIndicator(reason || "Item gefunden");
+    setStatus(reason || "Item gefunden", "item");
+  }
+
+  function showScrollIndicator(text) {
+    const el = document.getElementById('scroll-indicator');
+    el.textContent = text;
+    el.classList.add('show');
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => el.classList.remove('show'), 2000);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // PDF SOURCE HANDLING – kein Reload wenn Datei gleich bleibt
+  // ═══════════════════════════════════════════════════════════
+  let lastProjectPDFName = "";
+
+  function handleProjectPDF(name) {
+    if (!name || name === lastProjectPDFName) return;
+    lastProjectPDFName = name;
+
+    // Direkt als URL an PDF.js übergeben – Reaper's Webserver liefert
+    // alle Dateien aus dem www-Ordner, also ist "pdf/datei.pdf" eine
+    // gültige relative URL die der Browser auflösen kann.
+    pdfUrl = null; // force reload
+    loadPDF(name);
+  }
+
+  function getPDF() {
+    const file = document.getElementById("inputPDF").files[0];
+    if (!file) return;
+
+    // Relativen Pfad mit Unterordner speichern
+    const relativePath = "pdf/" + file.name;
+    wwr_req("SET/PROJEXTSTATE/pagesWebRC/PDF/" + encodeURIComponent(relativePath));
+    wwr_req("GET/PROJEXTSTATE/pagesWebRC/PDF");
+
+    // Lokal direkt aus FileReader laden (funktioniert auch ohne Webserver-Pfad)
+    const fr = new FileReader();
+    fr.onload = () => {
+      pdfUrl = null;
+      lastProjectPDFName = relativePath;
+      loadPDF(fr.result);
+    };
+    fr.readAsDataURL(file);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // UI HELPERS
+  // ═══════════════════════════════════════════════════════════
+  function updateTransportDisplay() {
+    const states = { 0:"STOP", 1:"PLAY", 2:"PAUSE", 5:"REC", 6:"REC-PAUSE" };
+    const stateStr = states[last_transport_state] || "–";
+    const timeStr  = convertSecondsToHHMMSS(last_time_str);
+    const el = document.getElementById('transport-state');
+    el.textContent = stateStr;
+    el.className = 'state';
+    if (last_transport_state === 1)                                      el.classList.add('playing');
+    else if (last_transport_state === 2 || last_transport_state === 6)   el.classList.add('paused');
+    else if (last_transport_state === 5)                                  el.classList.add('rec');
+    document.getElementById('transport-time').textContent = timeStr;
+  }
+
+  function convertSecondsToHHMMSS(s) {
+    const pad = n => String(Math.floor(n)).padStart(2,'0');
+    return `${pad(s/3600)}:${pad((s%3600)/60)}:${pad(s%60)}`;
+  }
+
+  function updateParamDisplay() {
+    document.getElementById('pageOffsetVal').textContent  = pageOffset;
+    document.getElementById('markerTagVal').textContent   = markerTag;
+    document.getElementById('itemFilterVal').textContent  = itemFilter || "–";
+  }
+
+  function prompt_itemTag() {} // nicht mehr benötigt
+
+  function prompt_itemFilter() {
+    const v = prompt("Item-Filter eingeben – mehrere Begriffe komma-getrennt:\nz.B. OTon, Atmo\nLeer lassen = kein Filter", itemFilter);
+    if (v !== null) {
+      itemFilter = v.trim();
+      itemFilterList = itemFilter
+        ? itemFilter.split(',').map(s => s.trim()).filter(s => s.length > 0)
+        : [];
+      document.getElementById('itemFilterVal').textContent = itemFilter || "–";
+      lastSearchTerm = ""; // Suche neu auslösen
+    }
+  }
+
+  function setStatus(msg, type) {
+    document.getElementById('status-msg').textContent = msg;
+    const b = document.getElementById('mode-badge');
+    if      (type === "marker") { b.textContent = "MARKER"; b.className = "badge badge-marker"; }
+    else if (type === "item")   { b.textContent = "ITEM";   b.className = "badge badge-item"; }
+    else                        { b.textContent = "IDLE";   b.className = "badge badge-inactive"; }
+  }
+
+  function prompt_pageOffset() {
+    const v = prompt("Page Offset eingeben:", pageOffset);
+    if (v !== null) {
+      wwr_req("SET/PROJEXTSTATE/pagesWebRC/offset/" + encodeURIComponent(v));
+      wwr_req("GET/PROJEXTSTATE/pagesWebRC/offset");
+      pageOffset = Number(v);
+      updateParamDisplay();
+    }
+  }
+
+  function prompt_markerTag() {
+    const v = prompt("Marker-Tag eingeben:", markerTag);
+    if (v !== null) {
+      wwr_req("SET/PROJEXTSTATE/pagesWebRC/markerTag/" + encodeURIComponent(v));
+      wwr_req("GET/PROJEXTSTATE/pagesWebRC/markerTag");
+      markerTag = v || "#S";
+      updateParamDisplay();
+    }
+  }
+
+  // Command ID des ItemWatcher-Scripts in Reaper
+  const ITEMWATCHER_ACTION = "_RS6d5cde61b3f919e841b26adb43d1dd5d9c1a7db8";
+
+  // Reaper-Action direkt per HTTP triggern (wwr_req funktioniert nicht zuverlässig für ACTION)
+  function triggerReaperAction(actionID) {
+    const url = "/_/" + encodeURIComponent(actionID);
+    fetch(url)
+      .then(r => {
+        dbSet("ACTION HTTP-Status", r.status + " " + r.statusText);
+        setStatus("Script-Start gesendet (Status " + r.status + ")", "item");
+      })
+      .catch(e => {
+        dbSet("ACTION Fehler", e.message);
+        setStatus("Script-Start fehlgeschlagen: " + e.message, "idle");
+      });
+  }
+
+  function toggleMode(id) {
+    const pill = document.getElementById(id);
+    const cb   = pill.querySelector('input');
+    cb.checked = !cb.checked;
+    pill.classList.toggle('active', cb.checked);
+
+    if (id === 'toggle-marker') {
+      modeMarker = cb.checked;
+      if (!modeMarker) setStatus("Marker-Modus deaktiviert", "idle");
+
+    } else {
+      modeItem = cb.checked;
+
+      if (modeItem) {
+        // Flag setzen damit Script weiß dass es laufen soll
+        wwr_req("SET/EXTSTATE/pagesWebRC/itemWatcherRun/1");
+        // Script starten – zwei Varianten parallel versuchen
+        triggerReaperAction(ITEMWATCHER_ACTION);
+        wwr_req("ACTION/" + ITEMWATCHER_ACTION);
+        dbSet("Script-Start versucht", ITEMWATCHER_ACTION);
+      } else {
+        // Script stoppen via Flag
+        wwr_req("SET/EXTSTATE/pagesWebRC/itemWatcherRun/0");
+        clearAllHighlights();
+        lastSearchTerm = "";
+        activeItemName = "";
+        setStatus("Item-Modus deaktiviert – Script gestoppt", "idle");
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // START
+  // ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
+  // DEBUG
+  // ═══════════════════════════════════════════════════════════
+  const dbState = {};
+  function dbSet(label, val) {
+    dbState[label] = val;
+    const panel = document.getElementById('debug-panel');
+    if (!panel || !panel.classList.contains('visible')) return;
+    panel.innerHTML = Object.entries(dbState)
+      .map(([k,v]) => `<div class="db-row"><span class="db-label">${k}:</span> <span class="db-val">${v}</span></div>`)
+      .join('');
+  }
+  function toggleDebug() {
+    const p = document.getElementById('debug-panel');
+    p.classList.toggle('visible');
+  }
+
+  // ═══ HELFER / PROJEKTORDNER / ANMERKUNGEN (echte PDF-Anmerkungen, editierbar) ═══
+  const HELPER = `http://${location.hostname}:8081`;
+  let projectDir = "", docList = [], docName = "", currentDoc = "";
+  let tool = "none", anns = {}, hist = [], sel = null, nextId = 1;
+  const col = {};
+  for (const k of ['mark', 'pen', 'text']) { let v = null; try { v = localStorage.getItem('ptcol-' + k); } catch (e) {} col[k] = v || { mark: '#ffe600', pen: '#e53935', text: '#1565c0' }[k]; }
+  const esc = t => t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const ptsH = p => renderedPages[p].viewport.height / renderedPages[p].viewport.scale;
+  const fileUrl = () => `${HELPER}/file?path=${encodeURIComponent(projectDir + "/skripte/" + currentDoc)}&t=${Date.now()}`;
+  const ann = () => sel && (anns[sel.p] || []).find(a => a.id === sel.id);
+  const matchDoc = n => docList.find(f => f === n || encodeURIComponent(f) === n);
+  const redrawAll = () => Object.keys(renderedPages).forEach(drawAnnotations);
+
+  // <<PDFIO  (pdf-lib: eigene Anmerkungen lesen/entfernen/schreiben; erkannt am Schlüssel PTData)
+  const NAME = n => PDFLib.PDFName.of(n);
+  const hexRgb = c => [1, 3, 5].map(i => parseInt(c.substr(i, 2), 16) / 255);
+
+  async function readMine(bytes) {
+    const doc = await PDFLib.PDFDocument.load(bytes);
+    const found = {}; let n = 0;
+    doc.getPages().forEach((pg, i) => {
+      const arr = pg.node.Annots(); if (!arr) return;
+      const keep = [];
+      for (const it of arr.asArray()) {
+        const d = doc.context.lookupMaybe(it, PDFLib.PDFDict);
+        const v = d && d.get(NAME('PTData'));
+        let a = null;
+        if (v) { try { a = JSON.parse(v.decodeText()); } catch (e) {} }
+        if (!a) { keep.push(it); continue; }
+        (found[i + 1] = found[i + 1] || []).push(a); n++;
+        const ap = d.get(NAME('AP')), apd = ap && doc.context.lookupMaybe(ap, PDFLib.PDFDict), nref = apd && apd.get(NAME('N'));
+        if (nref instanceof PDFLib.PDFRef) doc.context.delete(nref);
+        if (it instanceof PDFLib.PDFRef) doc.context.delete(it);
+      }
+      pg.node.set(NAME('Annots'), doc.context.obj(keep));
+    });
+    return { doc, found, n };
+  }
+
+  function makeAnnot(doc, a, W, H, font) {
+    const ctx = doc.context, c = hexRgb(a.c), cs = c.join(' ');
+    const form = (content, bbox, res) => ctx.register(ctx.stream(content, { Type: 'XObject', Subtype: 'Form', BBox: bbox, ...(res ? { Resources: res } : {}) }));
+    const base = { Type: 'Annot', F: 4, Subj: PDFLib.PDFHexString.fromText('PageTurner'), PTData: PDFLib.PDFHexString.fromText(JSON.stringify(a)) };
+    let d;
+    if (a.t === 'mark') {
+      const x1 = a.x * W, x2 = (a.x + a.w) * W, y1 = H * (1 - a.y - a.h), y2 = H * (1 - a.y), r = [x1, y1, x2, y2];
+      d = { ...base, Subtype: 'Highlight', Rect: r, C: c, CA: .35, QuadPoints: [x1, y2, x2, y2, x1, y1, x2, y1],
+            AP: { N: form(`/G gs ${cs} rg ${x1} ${y1} ${x2 - x1} ${y2 - y1} re f`, r, { ExtGState: { G: { ca: .35, CA: .35 } } }) } };
+    } else if (a.t === 'pen') {
+      if (a.pts.length < 2) return null;
+      const P = a.pts.map(q => [q[0] * W, H * (1 - q[1])]), xs = P.map(q => q[0]), ys = P.map(q => q[1]);
+      const r = [Math.min(...xs) - 2, Math.min(...ys) - 2, Math.max(...xs) + 2, Math.max(...ys) + 2];
+      d = { ...base, Subtype: 'Ink', Rect: r, C: c, BS: { W: 1.5 }, InkList: [P.flat()],
+            AP: { N: form(`${cs} RG 1.5 w 1 J 1 j ` + P.map((q, i) => `${q[0]} ${q[1]} ${i ? 'l' : 'm'}`).join(' ') + ' S', r) } };
+    } else {
+      const safe = a.s.replace(/[^ -~¡-ÿ]/g, '?'), size = a.fs * H, tw = font.widthOfTextAtSize(safe, size);
+      const x = a.x * W, y = H * (1 - a.y), r = [x - 2, y - size * .3, x + tw + 2, y + size * .95];
+      d = { ...base, Subtype: 'FreeText', Rect: r, Contents: PDFLib.PDFHexString.fromText(a.s), DA: PDFLib.PDFString.of(`/Helv ${size} Tf ${cs} rg`),
+            AP: { N: form(`BT /Helv ${size} Tf ${cs} rg 2 ${size * .3} Td ${font.encodeText(safe)} Tj ET`, [0, 0, r[2] - r[0], r[3] - r[1]], { Font: { Helv: font.ref } }) } };
+    }
+    return ctx.register(ctx.obj(d));
+  }
+  // PDFIO>>
+
+  let helperFailed = false, helperRetry = 0, listing = false;
+  async function onProjectDir(dir) {
+    if (listing) return;
+    if (dir === projectDir && !(helperFailed && Date.now() > helperRetry)) return;   // bei Fehlschlag alle 5 s neu versuchen
+    listing = true; projectDir = dir;
+    dbSet("projectDir", dir || "(leer)");
+    const grp = document.getElementById('doc-group');
+    const ac = new AbortController(), to = setTimeout(() => ac.abort(), 4000);
+    try {
+      docList = await (await fetch(`${HELPER}/list?dir=${encodeURIComponent(dir)}`, { signal: ac.signal })).json();
+      helperFailed = false;
+    } catch (e) {
+      docList = []; helperFailed = true; helperRetry = Date.now() + 5000;
+      grp.style.display = 'none'; dbSet("Helfer", "nicht erreichbar: " + HELPER);
+      setStatus(`Helfer nicht erreichbar (${HELPER}) – läuft er, ist Port 8081 freigegeben?`, "idle");
+      return;
+    } finally { clearTimeout(to); listing = false; }
+    document.getElementById('doc-select').innerHTML = docList.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('');
+    grp.style.display = docList.length ? '' : 'none';
+    for (const k in col) document.getElementById('col-' + k).value = col[k];
+    if (docList.length) loadDoc(matchDoc(docName) || docList[0], false);
+    else setStatus("Keine PDFs im Ordner „skripte“ des Projekts gefunden", "idle");
+  }
+  function onDocName(n) { const m = matchDoc(n); docName = m || n; if (m && m !== currentDoc) loadDoc(m, false); }
+  function chooseDoc(n) { loadDoc(n, true); }
+
+  async function loadDoc(name, remember) {
+    if (hist.length && !confirm("Ungespeicherte Änderungen verwerfen?")) { document.getElementById('doc-select').value = currentDoc; return; }
+    currentDoc = name; docName = name; anns = {}; hist = []; sel = null; markDirty();
+    document.getElementById('doc-select').value = name;
+    if (remember) wwr_req("SET/PROJEXTSTATE/pagesWebRC/docName/" + encodeURIComponent(name));
+    const resp = await fetch(fileUrl());
+    if (!resp.ok) { setStatus(`Datei nicht lesbar (HTTP ${resp.status}): ${name}`, "idle"); return; }
+    let src = await resp.arrayBuffer();
+    try {   // eigene Anmerkungen herauslösen: PDF.js zeichnet dann nur fremde, wir zeichnen unsere editierbar
+      const r = await readMine(src);
+      if (r.n) { Object.values(r.found).forEach(l => l.forEach(a => a.id = nextId++)); anns = r.found; src = await r.doc.save(); }
+    } catch (e) { dbSet("Anmerkungen lesen", e.message); }
+    pdfUrl = null;
+    await loadPDF(URL.createObjectURL(new Blob([src], { type: 'application/pdf' })));
+  }
+
+  function setTool(t) {
+    tool = (tool === t) ? 'none' : t;
+    document.querySelectorAll('[data-tool]').forEach(b => {
+      const on = b.dataset.tool === tool;
+      b.classList.toggle('active', on);
+      b.querySelector('.pill-dot').style.background = on ? 'var(--accent2)' : 'var(--border)';
+    });
+    document.body.classList.toggle('tool-active', tool !== 'none');
+    if (tool !== 'sel' && sel) select(null);
+  }
+
+  function setColor(k, v) {
+    col[k] = v; try { localStorage.setItem('ptcol-' + k, v); } catch (e) {}
+    const a = ann();
+    if (a && a.t === k) { pushHist(); a.c = v; drawAnnotations(sel.p); }
+  }
+
+  function markDirty() { document.getElementById('save-btn').querySelector('.pill-text').textContent = hist.length ? 'Speichern ●' : 'Speichern'; }
+  function pushHist() { hist.push(JSON.stringify(anns)); markDirty(); }
+  function undoAnn() { if (!hist.length) return; anns = JSON.parse(hist.pop()); sel = null; redrawAll(); markDirty(); }
+  function addAnn(p, a) { pushHist(); a.id = nextId++; (anns[p] = anns[p] || []).push(a); drawAnnotations(p); return a; }
+  function select(s) { const old = sel; sel = s; if (old) drawAnnotations(old.p); if (sel) drawAnnotations(sel.p); }
+  function delSel() {
+    const a = ann(); if (!a) return;
+    pushHist(); const p = sel.p; anns[p] = anns[p].filter(x => x !== a); sel = null; drawAnnotations(p);
+  }
+  function editSel() {
+    const a = ann(); if (!a || a.t !== 'text') return;
+    const v = prompt("Text:", a.s);
+    if (v) { pushHist(); a.s = v; drawAnnotations(sel.p); }
+  }
+  document.addEventListener('keydown', e => { if (tool === 'sel' && sel && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); delSel(); } });
+
+  function annSvg(a, w, h) {
+    let g;
+    if (a.t === 'mark') g = `<rect x="${a.x*w}" y="${a.y*h}" width="${a.w*w}" height="${a.h*h}" fill="${a.c}" fill-opacity=".35"/>`;
+    else if (a.t === 'pen') {
+      const pts = a.pts.map(q => (q[0]*w) + ',' + (q[1]*h)).join(' ');
+      g = `<polyline fill="none" stroke="${a.c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="${pts}"/><polyline fill="none" stroke="rgba(0,0,0,0)" stroke-width="16" stroke-linecap="round" points="${pts}"/>`;
+    } else g = `<text x="${a.x*w}" y="${a.y*h}" fill="${a.c}" font-size="${a.fs*h}" font-family="Helvetica,Arial,sans-serif">${esc(a.s)}</text>`;
+    return `<g data-id="${a.id}">${g}</g>`;
+  }
+
+  function drawAnnotations(p) {
+    const wrap = document.getElementById(`page-wrap-${p}`); if (!wrap) return;
+    let s = wrap.querySelector('.ann-layer');
+    if (!s) { s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'ann-layer'); wrap.appendChild(s); bindDraw(s, p); }
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    s.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    s.innerHTML = (anns[p] || []).map(a => annSvg(a, w, h)).join('');
+    if (sel && sel.p == p) {
+      const el = s.querySelector(`[data-id="${sel.id}"]`);
+      if (el) { const b = el.getBBox(); s.insertAdjacentHTML('beforeend', `<rect x="${b.x-3}" y="${b.y-3}" width="${b.width+6}" height="${b.height+6}" fill="none" stroke="#00e5a0" stroke-dasharray="4 3" pointer-events="none"/>`); }
+    }
+  }
+
+  function bindDraw(s, p) {
+    let cur = null, st = null, drag = null;
+    const pt = e => { const r = s.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+    s.addEventListener('pointerdown', e => {
+      if (tool === 'none') return;
+      const q = pt(e); e.preventDefault();
+      if (tool === 'sel') {
+        const g = e.target.closest('[data-id]');
+        select(g ? { p, id: +g.dataset.id } : null);
+        if (g) { pushHist(); drag = { last: q, moved: false }; s.setPointerCapture(e.pointerId); }
+        return;
+      }
+      if (tool === 'text') {
+        const txt = prompt("Text:");
+        if (txt) addAnn(p, { t: 'text', x: q[0], y: q[1], fs: 12 / ptsH(p), s: txt, c: col.text });
+        return;
+      }
+      s.setPointerCapture(e.pointerId); st = q;
+      cur = addAnn(p, tool === 'pen' ? { t: 'pen', pts: [q], c: col.pen } : { t: 'mark', x: q[0], y: q[1], w: 0, h: 0, c: col.mark });
+    });
+    s.addEventListener('pointermove', e => {
+      const q = pt(e);
+      if (drag) {
+        const a = ann(); if (!a) return;
+        const dx = q[0] - drag.last[0], dy = q[1] - drag.last[1]; drag.last = q; drag.moved = true;
+        if (a.t === 'pen') a.pts.forEach(z => { z[0] += dx; z[1] += dy; }); else { a.x += dx; a.y += dy; }
+        drawAnnotations(p); return;
+      }
+      if (!cur) return;
+      if (cur.t === 'pen') cur.pts.push(q);
+      else { cur.x = Math.min(st[0], q[0]); cur.y = Math.min(st[1], q[1]); cur.w = Math.abs(q[0] - st[0]); cur.h = Math.abs(q[1] - st[1]); }
+      drawAnnotations(p);
+    });
+    const end = () => {
+      if (drag) { if (!drag.moved) { hist.pop(); markDirty(); } drag = null; }
+      if (cur && cur.t === 'mark' && (cur.w < 0.003 || cur.h < 0.003)) undoAnn();
+      cur = null;
+    };
+    s.addEventListener('pointerup', end); s.addEventListener('pointercancel', end);
+  }
+
+  async function saveAnn() {
+    if (!hist.length) return;
+    try {
+      const { doc } = await readMine(await (await fetch(fileUrl())).arrayBuffer());   // alte eigene Anmerkungen entfernen
+      const pages = doc.getPages();
+      const font = Object.values(anns).some(l => l.some(a => a.t === 'text')) ? await doc.embedFont(PDFLib.StandardFonts.Helvetica) : null;
+      let skipped = 0;
+      for (const [p, list] of Object.entries(anns)) {
+        const pg = pages[p - 1];
+        if (!pg || pg.getRotation().angle) { skipped += list.length; continue; }
+        const { width: W, height: H } = pg.getSize();
+        let arr = pg.node.Annots();
+        if (!arr) { arr = doc.context.obj([]); pg.node.set(NAME('Annots'), arr); }
+        for (const a of list) { const r = makeAnnot(doc, a, W, H, font); if (r) arr.push(r); }
+      }
+      const r = await fetch(`${HELPER}/save?path=${encodeURIComponent(projectDir + "/skripte/" + currentDoc)}`, { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: await doc.save() });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      hist = []; markDirty();
+      const vw = document.getElementById('viewer-wrap'), y = vw.scrollTop;
+      await loadDoc(currentDoc, false);
+      vw.scrollTop = y; lastSearchTerm = "";
+      setStatus(skipped ? `Gespeichert (${skipped} Anmerkung(en) auf gedrehten Seiten übersprungen)` : "Gespeichert", "idle");
+    } catch (e) { setStatus("Speichern fehlgeschlagen: " + e.message, "idle"); }
+  }
+
+  window.addEventListener('scroll', () => { if (window.scrollY || window.scrollX) window.scrollTo(0, 0); });   // Seite selbst darf nie wegscrollen
+  function toggleSync() {
+    syncActive = !syncActive;
+    const btn = document.getElementById('sync-toggle');
+    btn.classList.toggle('active', syncActive);
+    btn.querySelector('.pill-dot').style.background = syncActive ? 'var(--accent)' : 'var(--border)';
+    btn.querySelector('.pill-text').textContent = syncActive ? 'Sync AN' : 'Sync AUS';
+    if (!syncActive) {
+      clearAllHighlights();
+      lastSearchTerm = "";
+      setStatus("Synchronisation pausiert", "idle");
+    } else {
+      setStatus("Synchronisation aktiv", "idle");
+    }
+  }
+
+  function toggleClickMode() {
+    clickMode = !clickMode;
+    const btn = document.getElementById('click-toggle');
+    btn.classList.toggle('active', clickMode);
+    btn.querySelector('.pill-dot').style.background = clickMode ? 'var(--accent2)' : 'var(--border)';
+    document.body.classList.toggle('click-mode', clickMode);
+    setStatus(clickMode ? "Klick-Modus aktiv – auf Text klicken um in Reaper zu springen" : "Klick-Modus deaktiviert", "idle");
+  }
+
+  // Klick auf Text-Layer → Reaper-Playhead setzen
+  function handleTextClick(e) {
+    if (!clickMode) return;
+    const span = e.target.closest('span');
+    if (!span) {
+      dbSet("Klick", "kein Span getroffen");
+      return;
+    }
+
+    // Ganzen Zeilentext rekonstruieren: alle Spans mit gleicher Y-Position
+    const textLayer = span.closest('.textLayer');
+    const clickedLine = getLineText(span, textLayer);
+    dbSet("Klick – Zeilentext", `"${clickedLine}"`);
+    dbSet("itemLookup Einträge", Array.isArray(itemLookup) ? itemLookup.length : Object.keys(itemLookup).length);
+
+    if (!clickedLine) return;
+
+    // Lookup: längsten Namen suchen der in der Zeile vorkommt,
+    // dann den Eintrag dessen Startzeit am nächsten zur aktuellen Position liegt
+    const sortedItems = [...itemLookup].sort((a, b) => b.name.length - a.name.length);
+    let foundPos  = null;
+    let foundName = null;
+
+    // Erst besten Namen finden
+    let bestName = null;
+    for (const entry of sortedItems) {
+      if (clickedLine.toLowerCase().includes(entry.name.toLowerCase())) {
+        bestName = entry.name.toLowerCase();
+        break;
+      }
+    }
+
+    if (bestName) {
+      // Unter allen gleichnamigen den nehmen der am nächsten zur aktuellen Playposition liegt
+      const candidates = itemLookup
+        .filter(e => e.name.toLowerCase() === bestName)
+        .sort((a, b) => Math.abs(a.start - last_time_str) - Math.abs(b.start - last_time_str));
+      if (candidates.length > 0) {
+        foundPos  = candidates[0].start;
+        foundName = candidates[0].name;
+      }
+    }
+
+    dbSet("Lookup-Treffer", foundName ? `„${foundName}" @ ${foundPos.toFixed(2)}s` : "keiner");
+
+    if (foundPos !== null) {
+      const cmd = "SET/POS/" + foundPos;
+      wwr_req(cmd);
+      fetch("/_/" + cmd)
+        .then(r => dbSet("fetch SET/POS Status", r.status))
+        .catch(err => dbSet("fetch SET/POS Fehler", err.message));
+
+      setStatus(`Reaper → „${foundName}" (${foundPos.toFixed(2)}s)`, "item");
+      showScrollIndicator(`→ ${foundName}`);
+    } else {
+      setStatus(`Kein Reaper-Item für „${clickedLine}" gefunden`, "idle");
+    }
+  }
+
+  // Liest alle Spans der gleichen Zeile (±3px Y-Toleranz) und gibt den zusammengesetzten Text zurück
+  function getLineText(clickedSpan, textLayer) {
+    if (!textLayer) return clickedSpan.textContent.trim();
+
+    const allSpans  = Array.from(textLayer.querySelectorAll('span'));
+    const clickRect = clickedSpan.getBoundingClientRect();
+    const clickY    = (clickRect.top + clickRect.bottom) / 2;
+
+    const lineSpans = allSpans.filter(s => {
+      const r = s.getBoundingClientRect();
+      const midY = (r.top + r.bottom) / 2;
+      return Math.abs(midY - clickY) < 5;
+    });
+
+    // Von links nach rechts sortieren
+    lineSpans.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+    return lineSpans.map(s => s.textContent).join('').trim();
+  }
+
+  wwr_start();
+  wwr_req_recur("TRANSPORT;MARKER", 150);
+  wwr_req("GET/PROJEXTSTATE/pagesWebRC/offset;GET/PROJEXTSTATE/pagesWebRC/markerTag;GET/PROJEXTSTATE/pagesWebRC/PDF;GET/PROJEXTSTATE/pagesWebRC/docName");
+  wwr_req_recur("GET/EXTSTATE/pagesWebRC/activeItem;GET/EXTSTATE/pagesWebRC/activeItemStart;GET/EXTSTATE/pagesWebRC/itemLookup;GET/EXTSTATE/pagesWebRC/projectDir", 150);
+  </script>
+</head>
+
+<body>
+
+  <!-- ── TOP BAR ─────────────────────────────────────────── -->
+  <div id="topbar">
+
+    <div class="logo">PDF PAGETURNER v2</div>
+
+    <div class="separator"></div>
+
+    <div id="transport-display">
+      <span class="state" id="transport-state">–</span>
+      <span class="time"  id="transport-time">00:00:00</span>
+    </div>
+
+    <div class="separator"></div>
+
+    <!-- Mode toggles -->
+    <div class="mode-group">
+      <span class="mode-label">Modi:</span>
+
+      <div class="toggle-pill active" id="toggle-marker" onclick="toggleMode('toggle-marker')">
+        <input type="checkbox" checked>
+        <div class="pill-dot"></div>
+        <span class="pill-text">Marker → Seite</span>
+      </div>
+
+      <div class="toggle-pill" id="toggle-item" onclick="toggleMode('toggle-item')">
+        <input type="checkbox">
+        <div class="pill-dot"></div>
+        <span class="pill-text">Item → Textsuche</span>
+      </div>
+
+      <div class="toggle-pill active" id="sync-toggle" onclick="toggleSync()" style="border-color:var(--accent)">
+        <input type="checkbox" checked>
+        <div class="pill-dot" style="background:var(--accent)"></div>
+        <span class="pill-text">Sync AN</span>
+      </div>
+
+      <div class="toggle-pill" id="click-toggle" onclick="toggleClickMode()">
+        <input type="checkbox">
+        <div class="pill-dot"></div>
+        <span class="pill-text">Klick → Reaper</span>
+      </div>
+    </div>
+
+    <div class="separator"></div>
+
+    <!-- Params -->
+    <div class="param-field">
+      <label>Seiten-Tag:</label>
+      <span class="val" id="markerTagVal" onclick="prompt_markerTag()">#S</span>
+    </div>
+
+    <div class="param-field">
+      <label>Item-Filter:</label>
+      <span class="val" id="itemFilterVal" onclick="prompt_itemFilter()" style="color:var(--accent2)">–</span>
+    </div>
+
+    <div class="param-field">
+      <label>Offset:</label>
+      <span class="val" id="pageOffsetVal" onclick="prompt_pageOffset()">0</span>
+    </div>
+
+    <div class="separator"></div>
+
+    <!-- Zoom -->
+    <div class="param-field">
+      <label>Zoom:</label>
+      <input type="range" id="zoom-slider"
+        min="0.5" max="3.0" step="0.1" value="1.0"
+        oninput="setZoom(this.value)"
+        style="width:80px; accent-color:var(--accent); cursor:pointer; vertical-align:middle;">
+      <span id="zoom-label" style="font-family:'Share Tech Mono',monospace; color:var(--accent); font-size:11px; min-width:36px;">100%</span>
+    </div>
+
+    <div class="separator"></div>
+
+    <!-- Dokument + Anmerkungen (nur sichtbar, wenn Helfer erreichbar und Projektordner bekannt) -->
+    <div class="mode-group" id="doc-group" style="display:none">
+      <span class="mode-label">Dok:</span>
+      <select id="doc-select" onchange="chooseDoc(this.value)" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:3px 6px"></select>
+      <div class="toggle-pill" data-tool="sel" onclick="setTool('sel')"><div class="pill-dot"></div><span class="pill-text">Wählen</span></div>
+      <div class="toggle-pill" data-tool="mark" onclick="setTool('mark')"><div class="pill-dot"></div><span class="pill-text">Marker</span><input type="color" id="col-mark" value="#ffe600" onclick="event.stopPropagation()" onchange="setColor('mark',this.value)" style="width:20px;height:18px;padding:0;border:none;background:none;cursor:pointer"></div>
+      <div class="toggle-pill" data-tool="pen" onclick="setTool('pen')"><div class="pill-dot"></div><span class="pill-text">Stift</span><input type="color" id="col-pen" value="#e53935" onclick="event.stopPropagation()" onchange="setColor('pen',this.value)" style="width:20px;height:18px;padding:0;border:none;background:none;cursor:pointer"></div>
+      <div class="toggle-pill" data-tool="text" onclick="setTool('text')"><div class="pill-dot"></div><span class="pill-text">Text</span><input type="color" id="col-text" value="#1565c0" onclick="event.stopPropagation()" onchange="setColor('text',this.value)" style="width:20px;height:18px;padding:0;border:none;background:none;cursor:pointer"></div>
+      <div class="toggle-pill" onclick="editSel()"><span class="pill-text">✎</span></div>
+      <div class="toggle-pill" onclick="delSel()"><span class="pill-text">🗑</span></div>
+      <div class="toggle-pill" onclick="undoAnn()"><span class="pill-text">↶</span></div>
+      <div class="toggle-pill" id="save-btn" onclick="saveAnn()"><span class="pill-text">Speichern</span></div>
+    </div>
+
+    <div class="separator"></div>
+
+    <!-- File -->
+    <input id="inputPDF" type="file" accept=".pdf" onchange="getPDF()">
+
+  </div>
+
+  <!-- ── STATUS BAR ──────────────────────────────────────── -->
+  <div id="statusbar">
+    <span class="badge badge-inactive" id="mode-badge">IDLE</span>
+    <span id="status-msg">Kein PDF geladen</span>
+    <span id="match-count"></span>
+  </div>
+
+  <!-- ── PDF VIEWER ──────────────────────────────────────── -->
+  <div id="viewer-wrap" onclick="handleTextClick(event)"></div>
+
+  <!-- ── SCROLL INDICATOR ────────────────────────────────── -->
+  <div id="scroll-indicator"></div>
+
+  <!-- ── DEBUG PANEL ─────────────────────────────────────── -->
+  <button id="debug-toggle" onclick="toggleDebug()">DEBUG</button>
+  <div id="debug-panel"></div>
+
+</body>
+</html>
